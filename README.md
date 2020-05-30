@@ -1,4 +1,5 @@
 # Project 
+This project is to help analyze and visualize which schools could better comply with the Community Eligibility Provision.
 
 This a template for a data analysis project.
 
