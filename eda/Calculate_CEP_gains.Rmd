@@ -21,6 +21,8 @@ p_load(ggthemes)
 p_load(mapproj)
 p_load(sf)
 p_load(usmap)
+library(usmap)
+library(ggplot2)
 #p_load(ussf)
 #p_load(BiocManager)
 #remotes::install_github("dcl-docs/ussf")
@@ -28,19 +30,6 @@ p_load(usmap)
 df <-
   read_excel(here::here("data-raw", "cep-database-excel-file.xlsx")) %>%
   clean_names() 
-us <- map_data("state")
-
-choro_dat <- data_frame(some_other_name=unique(us$region),
-                        some_critical_value=sample(10000, length(some_other_name)))
-
-gg <- ggplot()
-gg <- gg + geom_map(data=us, map=us,
-                    aes(long, lat, map_id=region),
-                    color="#2b2b2b", fill=NA, size=0.15)
-gg <- gg + coord_map("polyconic")
-gg <- gg + theme_map()
-gg <- gg + theme(plot.margin=margin(20,20,20,20))
-gg
 
 
 ```
@@ -73,6 +62,8 @@ district_baseline <-
     total_enrollment = sum(student_enrollment_where_available, na.rm = TRUE)
   ) %>%
   mutate(um_utilization = receives_meals / total_enrollment)
+
+DT::datatable(baseline)
 ```
 
 
@@ -93,7 +84,7 @@ baseline %>% select(-state) %>% summarise_all(sum) %>%
 
 
 ```{r}
-p_load(tidylog)
+
 
 cutpoint_all <- tibble()
 
@@ -149,51 +140,63 @@ baseline %>% summarise(baseline=sum(receives_meals,na.rm = TRUE)))
 ```
 
 
+
+
 ```{r}
+here::here()
+optimal_data <-
+  district_baseline %>%
+  ungroup() %>%
+  left_join(cep_eligible_schools, by = c("state", "school_district_local_education_agency_or_lea" = "lea")) %>%
+  mutate(
+    pct_gain = (max_enrolled - receives_meals) / total_enrollment,
+    raw_gain = (max_enrolled - receives_meals),
+  ) %>%
+  select(pct_gain, raw_gain, everything()) %>%
+  arrange(desc(raw_gain)) %>%
+  mutate(
+    current_coverage = receives_meals / total_enrollment,
+    optimal_coverage = max_enrolled / total_enrollment
+  )
+  
+    #read_rds(here::here("data/optimal_df.rds"))->optimal_data
+    
 
-district_baseline %>% left_join(cep_eligible_schools,by=c("state","school_district_local_education_agency_or_lea"="lea")) %>%
-  mutate(pct_gain=(max_enrolled-receives_meals)/total_enrollment,
-         raw_gain=(max_enrolled-receives_meals),
-         ) %>% 
-  select(pct_gain,raw_gain,max_enrolled,everything()) %>% 
-  arrange(desc(raw_gain))  %>% 
-  group_by() %>% filter(state=="Colorado")
-
+    optimal_data<-    optimal_data %>% select(state,lea=school_district_local_education_agency_or_lea,
+                            students_served=receives_meals,optimal_students_served=max_enrolled,current_coverage,optimal_coverage,total_enrollment) %>%
+      select(state,lea,everything())
+    write_rds(optimal_data,here::here("data/optimal_df.rds"))
 ```
 
 
 ```{r}
 
-district_baseline %>% left_join(cep_eligible_schools,by=c("state","school_district_local_education_agency_or_lea"="lea")) %>%
-  mutate(pct_gain=(max_enrolled-receives_meals)/total_enrollment,
-         raw_gain=(max_enrolled-receives_meals),
-         ) %>% 
-  select(pct_gain,raw_gain,everything()) %>% 
-  arrange(desc(raw_gain))  %>% 
+optimal_data %>%
   group_by(state) %>%
-  summarise_at(c("receives_meals","raw_gain","max_enrolled","total_enrollment"),sum,na.rm=TRUE) %>%
-  arrange(raw_gain) %>% 
+  summarise_at(c("students_served","optimal_students_served","total_enrollment"),sum,na.rm=TRUE) %>%
+
   mutate(
-    current_coverage=receives_meals/total_enrollment,
-    optimal_coverage=max_enrolled/total_enrollment
+    current_coverage=students_served/total_enrollment,
+    optimal_coverage=optimal_students_served/total_enrollment
   )->map_df
 
 
+map_df
+
+#DT::datatable(optimal_data %>% select(state,lea=school_district_local_education_agency_or_lea,current_service=receives_meals,optimal_service=max_enrolled,current_coverage,optimal_coverage))
+
 ```
 
 ```{r}
-library(usmap)
-library(ggplot2)
+
 statepop
 (statepop<- statepop %>% left_join(map_df,by=c("full"="state")))
-plot_usmap(data = statepop, values = "pop_2015", color = "red") + 
-  scale_fill_continuous(name = "Population (2015)", label = scales::comma) + 
-  theme(legend.position = "right")
- 
+
+ DT::datatable(statepop)
 ```
 
 
-```{r}
+```{r,warning=FALSE}
 plot_usmap(data=statepop,values="current_coverage",labels=TRUE,label_color = "white")+
   scale_fill_viridis_c(labels=scales::label_percent())+
   scale_fill_viridis_c()+
@@ -205,7 +208,7 @@ plot_usmap(data=statepop,values="current_coverage",labels=TRUE,label_color = "wh
 ```
 
 
-```{r}
+```{r,warning=FALSE}
 plot_usmap(data=statepop,values="optimal_coverage",labels=TRUE,label_color = "white")+
   scale_fill_viridis_c(labels=scales::label_percent())+
   labs(
@@ -215,3 +218,9 @@ plot_usmap(data=statepop,values="optimal_coverage",labels=TRUE,label_color = "wh
   )
 ```
 
+
+
+
+```{r}
+statepop %>% summarise_at(c("students_served","optimal_students_served","total_enrollment"),sum,na.rm=TRUE)
+```
