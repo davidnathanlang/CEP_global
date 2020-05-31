@@ -1,0 +1,10 @@
+name: CEPviewer
+title:
+username:
+account: davidnathanlang
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2384108
+bundleId: 3209914
+url: https://davidnathanlang.shinyapps.io/CEPviewer/
+when: 1590905155.34458

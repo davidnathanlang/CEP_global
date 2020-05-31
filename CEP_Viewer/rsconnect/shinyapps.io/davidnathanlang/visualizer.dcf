@@ -1,0 +1,10 @@
+name: visualizer
+title:
+username:
+account: davidnathanlang
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2383503
+bundleId: 3209877
+url: https://davidnathanlang.shinyapps.io/visualizer/
+when: 1590904185.15319
