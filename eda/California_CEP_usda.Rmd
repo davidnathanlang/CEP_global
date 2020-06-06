@@ -22,15 +22,139 @@ p_load(mapproj)
 p_load(sf)
 p_load(usmap)
 library(usmap)
+library(tidylog)
 library(ggplot2)
 #p_load(ussf)
 #p_load(BiocManager)
 #remotes::install_github("dcl-docs/ussf")
 # Read in CEP data
-df <-
-  read_excel(here::here("data-raw", "cep-database-excel-file.xlsx")) %>%
-  clean_names() 
+getwd()
+df <- read_excel(here::here("data-raw/california-may-cep-data-sy19-20.xlsx"),sheet = "Site Level Data", skip = 4) %>%
+  clean_names()
 
+df_clean<- df %>% 
+  mutate(lea_id=parse_number(lea_id),isp=parse_number(proxy_identified_student_percentage_isp),enrollment=parse_number(student_enrollment_in_near_eligible_eligible_and_participating_cep_schools),cep=currently_participating) %>%
+  mutate(cep=recode(cep,"X"="1",.default="0",.missing="0")) %>%
+  mutate(cep=parse_number(cep)) %>%
+  drop_na(enrollment,lea_id,school_id)
+
+df_clean %>% drop_na(enrollment)
+
+
+df_clean %>% filter(cep==1) %>% summarise_at("enrollment",sum)
+```
+
+
+```{r}
+df_clean %>% filter(cep==1) %>% summarise(sum(enrollment,na.rm = TRUE))
+
+summary(df_clean$isp)
+```
+
+
+
+```{r}
+cutpoint_all <- tibble()
+min_eligibility<-.4
+for (i in (0:160)) {
+  cutoff_value <- i / 100
+
+
+  cutpoint_df <-
+    df_clean %>%
+    mutate(isp = replace_na(isp, 0)) %>%
+    group_by(lea_id) %>%
+    mutate(identified_student_num = enrollment * isp) %>%
+    filter(isp > cutoff_value) %>%
+    mutate(
+      total_identified = sum(identified_student_num, na.rm = TRUE),
+      total_enrolled = sum(enrollment, na.rm = TRUE)
+    ) %>%
+    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+           local_enrolled= enrollment*(percent_identified>=min_eligibility))
+
+  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+}
+
+
+
+cep_eligible_schools <-
+  cutpoint_all %>%
+  mutate(receive_service = percent_identified >= .4) %>%
+  group_by(lea_id,school_id) %>%
+  mutate(max_enrolled = max(total_enrolled)) %>%
+  filter(local_enrolled == max(local_enrolled)) %>%
+  arrange(desc(total_enrolled), cutoff) %>%
+  slice(1) %>%
+  ungroup()
+
+
+cep_eligible_schools
+
+
+cep_eligible_schools %>%
+  summarise_at(c("local_enrolled","enrollment"), sum, na.rm = TRUE)
+
+
+```
+
+```{r}
+cutpoint_all <- tibble()
+min_eligibility<-.4
+for (i in (0:40)) {
+  cutoff_value <- i / 100
+
+
+  cutpoint_df <-
+    df_clean %>%
+    mutate(isp = replace_na(isp, 0)) %>%
+    group_by(lea_id) %>%
+    mutate(identified_student_num = enrollment * isp) %>%
+    filter(isp > cutoff_value) %>%
+    mutate(
+      total_identified = sum(identified_student_num, na.rm = TRUE),
+      total_enrolled = sum(enrollment, na.rm = TRUE)
+    ) %>%
+    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+           local_enrolled= enrollment*(percent_identified>=min_eligibility))
+
+  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+}
+
+
+
+cep_eligible_schools <-
+  cutpoint_all %>%
+  mutate(receive_service = percent_identified >= .4) %>%
+  group_by(lea_id,school_id) %>%
+  filter(local_enrolled>0) %>%
+  mutate(max_enrolled = max(total_enrolled)) %>%
+  filter(local_enrolled == max(local_enrolled)) %>%
+  arrange(desc(total_enrolled), cutoff) %>%
+  slice(1) %>%
+  filter(local_enrolled>0) %>% 
+  mutate(cep_current=cep*enrollment) 
+
+
+
+cep_eligible_schools
+
+
+cep_eligible_schools %>%
+  ungroup() %>%
+  mutate(cep_current=cep*enrollment) %>%
+  summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) 
+
+cep_eligible_schools %>%
+  group_by(lea_id,lea_name) %>% summarise_at(c("local_enrolled","enrollment","cep_current"),sum) %>%
+  mutate(raw_gain=local_enrolled-cep_current) %>% arrange(desc(raw_gain))
+
+
+cep_eligible_schools %>% write_csv("california_list.csv")
+
+```
+
+```{r}
 
 ```
 
@@ -86,56 +210,6 @@ baseline %>% select(-state) %>% summarise_all(sum) %>%
 ```{r}
 
 
-cutpoint_all <- tibble()
-
-for (i in (0:160)) {
-  cutoff_value <- i / 400
-
-
-  cutpoint_df <-
-    df %>%
-    mutate(identified_student_percentage_isp = replace_na(identified_student_percentage_isp, 0)) %>%
-    group_by(state, lea = school_district_local_education_agency_or_lea) %>%
-    mutate(identified_student_num = student_enrollment_where_available * identified_student_percentage_isp) %>%
-    filter(identified_student_percentage_isp > cutoff_value) %>%
-    summarise(
-      total_identified = sum(identified_student_num, na.rm = TRUE),
-      total_enrolled = sum(student_enrollment_where_available, na.rm = TRUE)
-    ) %>%
-    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled)
-
-  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
-}
-
-
-
-cep_eligible_schools <-
-  cutpoint_all %>%
-  mutate(receive_service = percent_identified >= .4) %>%
-  filter(receive_service) %>%
-  group_by(state, lea) %>%
-  mutate(max_enrolled = max(total_enrolled)) %>%
-  filter(total_enrolled == max(total_enrolled)) %>%
-  arrange(desc(total_enrolled), cutoff) %>%
-  slice(1) %>%
-  ungroup()
-
-
-
-
-
-cep_eligible_schools %>%
-  summarise_at(c("total_enrolled"), sum, na.rm = TRUE)
-
-
-
-bind_cols(cep_eligible_schools %>%
-  summarise(optimized=sum(total_enrolled,na.rm = TRUE)),
-baseline %>% summarise(baseline=sum(receives_meals,na.rm = TRUE)))
-
-
-
-
 
 ```
 
@@ -166,6 +240,10 @@ optimal_data <-
                             students_served=receives_meals,optimal_students_served=max_enrolled,current_coverage,optimal_coverage,total_enrollment) %>%
       select(state,lea,everything())
     write_rds(optimal_data,here::here("data/optimal_df.rds"))
+    
+    
+
+    optimal_data %>% group_by(state) %>% summarise(sum(raw_gain,na.rm = TRUE))
 ```
 
 

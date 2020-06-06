@@ -22,16 +22,31 @@ p_load(mapproj)
 p_load(sf)
 p_load(usmap)
 library(usmap)
+library(tidylog)
 library(ggplot2)
 #p_load(ussf)
 #p_load(BiocManager)
 #remotes::install_github("dcl-docs/ussf")
 # Read in CEP data
+
+frpl<-read_xlsx(here::here("data-raw/frpm1920 (3).xlsx"),sheet = 2,skip = 1) %>%
+  clean_names() %>%
+  mutate(district_name=str_replace_all(str_to_lower(district_name),pattern = " Unified.*",replacement = "")) %>%
+  filter(schooo)
+  
 df <-
   read_excel(here::here("data-raw", "cep-database-excel-file.xlsx")) %>%
-  clean_names() 
+  clean_names()  %>% filter(state=="California") %>% mutate(district=school_district_local_education_agency_or_lea) %>%
+  mutate(district=str_replace_all(str_to_lower(district),pattern = " unified.*",replacement = ""))
 
+df
+frpl
+df$school_district_local_education_agency_or_lea
+frpl %>% left_join(df,by=c("district_name"="district"))->oof
 
+frpl %>% count(district_name,sort=TRUE)
+df
+count(df,school_district_local_education_agency_or_lea,sort=TRUE)
 ```
 
 
@@ -166,6 +181,10 @@ optimal_data <-
                             students_served=receives_meals,optimal_students_served=max_enrolled,current_coverage,optimal_coverage,total_enrollment) %>%
       select(state,lea,everything())
     write_rds(optimal_data,here::here("data/optimal_df.rds"))
+    
+    
+
+    optimal_data %>% group_by(state) %>% summarise(sum(raw_gain,na.rm = TRUE))
 ```
 
 
