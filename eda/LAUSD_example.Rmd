@@ -1,0 +1,326 @@
+---
+title: "CEP_eligibility_calculations"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+library(pacman)
+p_load(tidyverse)
+p_load(geofacet)
+p_load(readxl)
+p_load(janitor)
+p_load(maptools)
+p_load(mapdata)
+p_load(ggthemes)
+p_load(mapproj)
+p_load(sf)
+p_load(usmap)
+library(usmap)
+library(tidylog)
+library(ggplot2)
+#p_load(ussf)
+#p_load(BiocManager)
+#remotes::install_github("dcl-docs/ussf")
+# Read in CEP data
+getwd()
+df <- read_excel(here::here("data-raw/california-may-cep-data-sy19-20.xlsx"),sheet = "Site Level Data", skip = 4) %>%
+  clean_names()
+
+df_clean<- df %>% 
+  mutate(lea_id=parse_number(lea_id),isp=parse_number(proxy_identified_student_percentage_isp),enrollment=parse_number(student_enrollment_in_near_eligible_eligible_and_participating_cep_schools),cep=currently_participating) %>%
+  mutate(cep=recode(cep,"X"="1",.default="0",.missing="0")) %>%
+  mutate(cep=parse_number(cep)) %>%
+  drop_na(enrollment,lea_id,school_id)
+
+df_clean %>% drop_na(enrollment)
+
+
+df_clean %>% filter(cep==1) %>% summarise_at("enrollment",sum)
+```
+
+
+```{r}
+df_clean %>% filter(cep==1) %>% summarise(sum(enrollment,na.rm = TRUE))
+
+summary(df_clean$isp)
+
+df_clean<-df_clean %>%
+  filter(lea_name=="Los Angeles Unified School District")  
+```
+
+
+
+```{r}
+cutpoint_all <- tibble()
+min_eligibility<-.4
+for (i in (0:160)) {
+  cutoff_value <- i / 100
+
+
+  cutpoint_df <-
+    df_clean %>%
+    mutate(isp = replace_na(isp, 0)) %>%
+    group_by(lea_id) %>%
+    mutate(identified_student_num = enrollment * isp) %>%
+    filter(isp > cutoff_value) %>%
+    mutate(
+      total_identified = sum(identified_student_num, na.rm = TRUE),
+      total_enrolled = sum(enrollment, na.rm = TRUE)
+    ) %>%
+    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+           local_enrolled= enrollment*(percent_identified>=min_eligibility))
+
+  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+}
+
+
+
+cep_eligible_schools <-
+  cutpoint_all %>%
+  mutate(receive_service = percent_identified >= .4) %>%
+  group_by(lea_id,school_id) %>%
+  mutate(max_enrolled = max(total_enrolled)) %>%
+  filter(local_enrolled == max(local_enrolled)) %>%
+  arrange(desc(local_enrolled), cutoff) %>%
+  slice(1) %>%
+  ungroup()
+
+
+cep_eligible_schools %>% ggplot(mapping=aes(isp,weight=enrollment))+
+  geom_histogram(binwidth = .01,color=isp>.4)+
+  facet_grid(rows=vars(cep))+
+  geom_vline(xintercept = .4)
+cep_eligible_schools
+
+
+cep_eligible_schools %>%
+  summarise_at(c("local_enrolled","enrollment"), sum, na.rm = TRUE)
+
+
+```
+
+```{r}
+cutpoint_all <- tibble()
+min_eligibility<-.4
+for (i in (0:40)) {
+  cutoff_value <- i / 100
+
+
+  cutpoint_df <-
+    df_clean %>%
+    mutate(isp = replace_na(isp, 0)) %>%
+    group_by(lea_id) %>%
+    mutate(identified_student_num = enrollment * isp) %>%
+    filter(isp > cutoff_value) %>%
+    mutate(
+      total_identified = sum(identified_student_num, na.rm = TRUE),
+      total_enrolled = sum(enrollment, na.rm = TRUE)
+    ) %>%
+    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+           local_enrolled= enrollment*(percent_identified>=min_eligibility))
+
+  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+}
+
+
+
+cep_eligible_schools <-
+  cutpoint_all %>%
+  mutate(receive_service = percent_identified >= .4) %>%
+  group_by(lea_id,school_id) %>%
+  filter(local_enrolled>0) %>%
+  mutate(max_enrolled = max(total_enrolled)) %>%
+  filter(local_enrolled == max(local_enrolled)) %>%
+  arrange(desc(total_enrolled), cutoff) %>%
+  slice(1) %>%
+  filter(local_enrolled>0) %>% 
+  ungroup() %>%
+  mutate(cep_current=cep*enrollment,raw_gain=local_enrolled-cep_current)  %>%
+  group_by(lea_id,lea_name) %>% mutate(district_gain=sum(raw_gain))
+
+
+
+cep_eligible_schools
+
+
+cep_eligible_schools %>%
+  ungroup() %>%
+  mutate(cep_current=cep*enrollment) %>%
+  summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) 
+
+cep_eligible_schools %>%
+  group_by(lea_id,lea_name) %>% summarise_at(c("local_enrolled","enrollment","cep_current"),sum) %>%
+  mutate(raw_gain=local_enrolled-cep_current) %>% arrange(desc(raw_gain))
+
+
+cep_eligible_schools %>% write_csv("california_list.csv")
+
+```
+
+```{r}
+
+cep_eligible_schools %>% group_by(lea_id,lea_name) %>% arrange(desc(district_gain)) %>% distinct(lea_name,district_gain)
+```
+
+
+# Count the number of students currently receiving meal service according to the CEP database.
+```{r}
+baseline <-
+  df %>%
+  group_by(state) %>%
+mutate(particpates = participation_in_cep_y_n == "Y") %>%
+  mutate(
+    identified_student_percentage_isp = replace_na(identified_student_percentage_isp, 0)
+  ) %>%
+  summarise(
+    receives_meals = sum(student_enrollment_where_available * particpates, na.rm = TRUE),
+    total_enrollment = sum(student_enrollment_where_available, na.rm = TRUE)
+  ) %>%
+  mutate(um_utilization = receives_meals / total_enrollment)
+
+district_baseline <-
+  df %>%
+  group_by(state, school_district_local_education_agency_or_lea) %>%
+  mutate(particpates = participation_in_cep_y_n == "Y") %>%
+  mutate(
+    identified_student_percentage_isp = replace_na(identified_student_percentage_isp, 0)
+  ) %>%
+  summarise(
+    receives_meals = sum(student_enrollment_where_available * particpates, na.rm = TRUE),
+    total_enrollment = sum(student_enrollment_where_available, na.rm = TRUE)
+  ) %>%
+  mutate(um_utilization = receives_meals / total_enrollment)
+
+DT::datatable(baseline)
+```
+
+
+```{r}
+baseline %>% select(-state) %>% summarise_all(sum) %>%
+  mutate(um_utilization=receives_meals/total_enrollment)
+```
+
+```{r}
+
+
+# district_baseline %>%
+#   ggplot(aes(um_utilization)) +
+#   geom_histogram(binwidth = .05) +
+#   facet_geo(~state)
+```
+
+
+
+```{r}
+
+
+
+```
+
+
+
+
+```{r}
+here::here()
+optimal_data <-
+  district_baseline %>%
+  ungroup() %>%
+  left_join(cep_eligible_schools, by = c("state", "school_district_local_education_agency_or_lea" = "lea")) %>%
+  mutate(
+    pct_gain = (max_enrolled - receives_meals) / total_enrollment,
+    raw_gain = (max_enrolled - receives_meals),
+  ) %>%
+  select(pct_gain, raw_gain, everything()) %>%
+  arrange(desc(raw_gain)) %>%
+  mutate(
+    current_coverage = receives_meals / total_enrollment,
+    optimal_coverage = max_enrolled / total_enrollment
+  )
+  
+    #read_rds(here::here("data/optimal_df.rds"))->optimal_data
+    
+
+    optimal_data<-    optimal_data %>% select(state,lea=school_district_local_education_agency_or_lea,
+                            students_served=receives_meals,optimal_students_served=max_enrolled,current_coverage,optimal_coverage,total_enrollment) %>%
+      select(state,lea,everything())
+    write_rds(optimal_data,here::here("data/optimal_df.rds"))
+    
+    
+
+    optimal_data %>% group_by(state) %>% summarise(sum(raw_gain,na.rm = TRUE))
+```
+
+
+```{r}
+
+optimal_data %>%
+  group_by(state) %>%
+  summarise_at(c("students_served","optimal_students_served","total_enrollment"),sum,na.rm=TRUE) %>%
+
+  mutate(
+    current_coverage=students_served/total_enrollment,
+    optimal_coverage=optimal_students_served/total_enrollment
+  )->map_df
+
+
+map_df
+
+#DT::datatable(optimal_data %>% select(state,lea=school_district_local_education_agency_or_lea,current_service=receives_meals,optimal_service=max_enrolled,current_coverage,optimal_coverage))
+
+```
+
+```{r}
+
+statepop
+(statepop<- statepop %>% left_join(map_df,by=c("full"="state")))
+
+ DT::datatable(statepop)
+```
+
+
+```{r,warning=FALSE}
+plot_usmap(data=statepop,values="current_coverage",labels=TRUE,label_color = "white")+
+  scale_fill_viridis_c(labels=scales::label_percent())+
+  scale_fill_viridis_c()+
+  labs(
+    title="Current Utilization of Universal Meal Service",
+    fill="Percent",
+    caption="Source: Food Research and  Action Center"
+  )
+```
+
+
+```{r,warning=FALSE}
+plot_usmap(data=statepop,values="optimal_coverage",labels=TRUE,label_color = "white")+
+  scale_fill_viridis_c(labels=scales::label_percent())+
+  labs(
+    title="Optimal Utilization of Universal Meal Service",
+    fill="Percent",
+    caption="Source: Food Research and Action Center"
+  )
+```
+
+
+
+
+```{r}
+statepop %>% summarise_at(c("students_served","optimal_students_served","total_enrollment"),sum,na.rm=TRUE)
+```
+
+
+```{r}
+optimal_data 
+```
+
+
+```{r}
+df %>% filter(state=="Nevada") %>% group_by(school_district_local_education_agency_or_lea) %>%
+  summarise(total_enrollment=sum(student_enrollment_where_available),mean_isp=weighted.mean(identified_student_percentage_isp,))
+```
+

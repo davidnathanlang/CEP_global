@@ -1,0 +1,381 @@
+---
+title: "California Universal Meal Service Optimization Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Abstract: This document utilizes data from the  California's Community Eligibility Provision (CEP) (USDA FN 742) and National Student Lunch Provision Status (NLPS) for the 2019-20 academic year to explore whether or not California Schools are  fully utilizing federally subsidized programs for universal meal service. We find that in practice, many school and district are eligible but not currently adopting the program. Optimal partiicipation in these programs would increase universal meal service by in excess of 1.5 million students.  We also find that a small but non-trivial fraction of schools should be obligated as a consequence of SB 138. Approximately 80,000 students would receive universal meal service if they were to comply with the senate bill.
+
+
+```{r,echo=FALSE}
+library(pacman)
+p_load(tidyverse)
+p_load(geofacet)
+p_load(readxl)
+p_load(janitor)
+p_load(maptools)
+p_load(mapdata)
+p_load(ggthemes)
+p_load(mapproj)
+p_load(sf)
+p_load(usmap)
+library(usmap)
+#library(tidylog)
+library(ggplot2)
+#p_load(ussf)
+#p_load(BiocManager)
+#remotes::install_github("dcl-docs/ussf")
+# Read in CEP data
+
+frpm <- read_excel(here::here("data-raw/frpm1920 (3).xlsx"), 
+    sheet = "FRPM School-Level Data ", skip = 1) %>% clean_names() %>%
+  mutate(pkey=str_c(district_code,school_code))
+
+
+df <- read_excel(here::here("data-raw/california-may-cep-data-sy19-20.xlsx"),sheet = "Site Level Data", skip = 4) %>%
+  clean_names() %>% mutate(pkey=str_sub(school_id,3,99))
+
+
+```
+
+
+```{r,echo=FALSE}
+df_clean <- df %>%
+  mutate(
+    lea_id = parse_number(lea_id),
+    isp = parse_number(proxy_identified_student_percentage_isp),
+    enrollment = parse_number(student_enrollment_in_near_eligible_eligible_and_participating_cep_schools),
+    cep = currently_participating
+  ) %>%
+  mutate(cep = recode(cep, "X" = "1", .default = "0", .missing = "0")) %>%
+  mutate(cep = parse_number(cep)) %>%
+  drop_na(enrollment, lea_id, school_id) %>%
+  inner_join(frpm, by = "pkey") %>%
+  drop_na(nslp_provision_status)
+
+```
+
+## Introduction
+Currently, The vast majority of schools do not actively participate in any type of federal provisions for universal meal service. Of those that do, most participate in the Community Eligibility Provision. Schools are able to participate in CEP if at least 40% of their students are identified as eligible for universal meal service via SNAP, TANF, Calfresh and other programs.  Schools that participate in the program must keep a daily total of meal service and not charge students for meals. 
+```{r,echo=FALSE}
+df_clean %>%
+  count(nslp_provision_status) %>%
+  ggplot(aes(fct_reorder(nslp_provision_status,-n),weight=n))+
+  geom_bar()+
+  coord_flip()+
+  labs(
+    title="California School Participation in Universal Meal Service Programs",
+    caption = "Source:USDA FNS 742 Report for California 2019-20"
+  )
+```
+
+
+For the remainder of this analysis, we limit the analytical sample to schools that are currently participating in CEP and schools that are actively not electing to participate in any National School Lunch Program for the 2019-2020 period. Schools are able to participate in CEP if at least 40% of their students are identified as eligible for universal meal service via SNAP, TANF, Calfresh and other programs.  Schools that participate in the program must keep a daily total of meal service and not charge students for meals. In exchange, the school will receive a federal subsidy that ranges from to 60% to 100% of the federal reimbursement for free meals.  In effect this also means that there's zero marginal benefit for schools that have in excess of 62.5% eligibility. Schools can also participate if they are below this 40% threshold if they are part of subgroup schools that one average satisfy this threshold. 
+
+The figures below illustrates current the distribution of schools based on whether or not they qualify for the program on an individual basis. The vertical lines correspond to the 40% threshold at which schools become eligible to participate on the program on an independent basis and 62.5% where schools receive the maximal federal reimbursement rate. Assuming schools must participate in the program independently, over a half-million students could be participating in the program.
+```{r,echo=FALSE}
+df
+df_simple<- df_clean %>% filter(nslp_provision_status %in% c("CEP","Not Participating"))
+
+df_simple %>%
+  ggplot(mapping = aes(x=isp,weight=enrollment))+
+  geom_histogram(binwidth = .01)+
+  facet_grid(row =vars(nslp_provision_status))+
+  geom_vline(xintercept = c(.4,.625))+
+  scale_y_continuous(labels =scales::label_number())+
+  coord_cartesian(xlim=c(0,1))+
+  annotate("text",x=c(.3),y=95000,label="Independently \n Ineligible")+
+  annotate("text",x=c(.5),y=95000,label="Eligible")+
+    annotate("text",x=c(.75),y=95000,label="ISP>Max Benefits")
+
+
+
+df_simple %>% 
+  mutate(Eligibility_Type=case_when(isp>.625~"Max Benefits",isp>.4~"Eligible",TRUE~"Not Eligible")) %>%
+    group_by(nslp_provision_status,Eligibility_Type) %>%
+  summarise(enrollment=sum(enrollment)) %>%
+  pivot_wider(id_col=Eligibility_Type,names_from=nslp_provision_status,values_from=enrollment)
+?annotate  
+?geom_label
+```
+
+
+Schools tend to participate with increasing probability as the number of students who as the identified student percentage increases. We find not only are there is increasing probability of enrollment, non-parametric tests suggest that there are sharp discontinuities in participation at the 40% and 62.5% thresholds where the reimbursement policy respectivelykick in and level off. 
+
+```{r, message=FALSE, results='hide'}
+p_load(rdrobust)
+   rd_df<-
+df_simple %>%
+  filter(isp>.28,isp<.52) 
+
+  invisible(rdplot(y=rd_df$cep,x=rd_df$isp,c=.4))->rd_plot1
+  
+  
+
+  
+  rd_df<-
+  df_simple %>%
+  filter(isp>.625-.108,isp<.625+.108) 
+
+  rdplot(y=rd_df$cep,x=rd_df$isp,c=.625)->rd_plot2
+```
+
+```{r,echo=FALSE}
+#remotes::install_github("apoorvalal/LalRUtils")
+#library(binscatter)
+#p_load(binsreg)
+#p_load(rdrobust)
+#rdrobust(y=df_simple$cep,x=df_simple$isp,c=.4)
+
+
+#eligibility_plot<-rdplot(y=df_simple$cep,x=df_simple$isp,c=.4)
+  #rdplot(y=rd_df$cep,x=rd_df$isp,c=.4)
+#  ggplot(aes(x=.$))
+  
+#  rdrobust(y=df_simple$cep,x=df_simple$isp,c=.625)
+ 
+
+  rd_plot1$rdplot+
+    scale_y_continuous(labels=scales::label_percent())+
+        scale_x_continuous(labels=scales::label_percent())+
+    labs(title = "CEP Adoption and ISP rate at Initial Eligibility Threshold",
+         x="ISP rate",
+         y="CEP Adoption Rate")
+
+  rd_plot2$rdplot+
+    scale_y_continuous(labels=scales::label_percent())+
+        scale_x_continuous(labels=scales::label_percent())+
+    labs(title = "CEP Adoption and ISP rate at Maximal Eligibility Threshold",
+         x="ISP rate",
+         y="CEP Adoption Rate")
+
+
+# x <- runif(500); y <- sin(x)+rnorm(500)
+# ## Binned scatterplot
+# binsreg(df_simple$cep,df_simple$isp,)->oof
+#   geom_vline(xintercept = .4)
+# 
+# oof$bins_plot +theme_minimal()+
+#   geom_line()
+```
+
+
+```{r,echo=FALSE}
+# cutpoint_all <- tibble()
+# min_eligibility<-.4
+# for (i in (0:40)) {
+#   cutoff_value <- i / 100
+# 
+# 
+#   cutpoint_df <-
+#     df_simple %>%
+#     mutate(isp = replace_na(isp, 0)) %>%
+#     group_by(lea_id) %>%
+#     mutate(identified_student_num = enrollment * isp) %>%
+#     filter(isp > cutoff_value) %>%
+#     mutate(
+#       total_identified = sum(identified_student_num, na.rm = TRUE),
+#       total_enrolled = sum(enrollment, na.rm = TRUE)
+#     ) %>%
+#     mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+#            local_enrolled= enrollment*(percent_identified>=min_eligibility))
+# 
+#   cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+# }
+# 
+# 
+# 
+# cep_eligible_schools <-
+#   cutpoint_all %>%
+#   mutate(receive_service = percent_identified >= .4) %>%
+#   group_by(lea_id,school_id) %>%
+#   mutate(max_enrolled = max(total_enrolled)) %>%
+#   filter(local_enrolled == max(local_enrolled)) %>%
+#   arrange(desc(total_enrolled), cutoff) %>%
+#   slice(1) %>%
+#   ungroup()
+# 
+# 
+# cep_eligible_schools
+# 
+# 
+# cep_eligible_schools %>%
+#   summarise_at(c("local_enrolled","enrollment"), sum, na.rm = TRUE)
+
+
+```
+
+
+Notably, one of the ways schools can increase their participation is by forming coalitions with other schools in their district such that they can collectively satisfy the requirement
+Below, we perform a simple exercise where we try to build the largest eligibile pool of schools that could receive CEP. We build these groups  with a simple fairness constraint where we require that each school that participates in CEP must have an ISP rate that is strictly greater than all schools that do not receive the CEP benefit. We also make simplifying assumptions that schools can only form coalitions within their district and that only group of schools per district can participate in CEP. The results of this exercise suggest that nearly 1.8 million. 
+There are some downside costs for this optimization. In particular, the average reimbursement rate per meal will almost always drop as a consequence of this optimization. In all of these cases, the reimbursement rate will not dip below 64% of the free meal reimbursement rate.If districts were to fully optimize this policy, the average reimbursement rate would fall from approximately 91% to 78% with substantial heterogeneity across schools.
+
+
+```{r,echo=FALSE}
+cutpoint_all <- tibble()
+min_eligibility<-.4
+for (i in (0:160)) {
+  cutoff_value <- i / 400
+
+
+  cutpoint_df <-
+    df_clean %>%
+    mutate(isp = replace_na(isp, 0)) %>%
+    group_by(lea_id) %>%
+    mutate(identified_student_num = enrollment * isp) %>%
+    filter(isp > cutoff_value) %>%
+    mutate(
+      total_identified = sum(identified_student_num, na.rm = TRUE),
+      total_enrolled = sum(enrollment, na.rm = TRUE)
+    ) %>%
+    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+           local_enrolled= enrollment*(percent_identified>=min_eligibility))
+
+  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+}
+
+
+
+cep_eligible_schools <-
+  cutpoint_all %>%
+  mutate(receive_service = percent_identified >= .4) %>%
+  group_by(lea_id, school_id) %>%
+  filter(local_enrolled == max(local_enrolled)) %>%
+  arrange(desc(local_enrolled), cutoff) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(cep_current = cep * enrollment, raw_gain = local_enrolled - cep_current) %>%
+  group_by(lea_id, lea_name) %>%
+  mutate(district_gain = sum(raw_gain))
+
+
+
+cep_eligible_schools
+
+
+cep_eligible_schools %>%
+  ungroup() %>%
+  summarise_at(c("local_enrolled", "enrollment", "cep_current"), sum, na.rm = TRUE)
+
+cep_eligible_schools %>%
+  group_by(lea_id, lea_name) %>%
+  mutate(cep_current = cep * enrollment) %>%
+  summarise(
+    total_enrollment = sum(enrollment, na.rm = TRUE),
+    proposed_eligibility = sum(local_enrolled, na.rm = TRUE),
+    current_eligibility = sum(cep_current, na.rm = TRUE),
+    ISP_proposed = weighted.mean(isp, local_enrolled, na.rm = TRUE),
+    ISP_current = weighted.mean(isp, enrollment * cep, na.rm = TRUE)
+  ) %>%
+  mutate(district_gain = proposed_eligibility - current_eligibility) %>%
+  arrange(desc(district_gain)) %>% arrange(desc(district_gain)) -> district_df
+
+
+district_df %>%
+  ungroup() %>%
+  summarise_at(c("proposed_eligibility", "current_eligibility", "district_gain", "total_enrollment"), sum, na.rm = TRUE)
+    
+    
+  DT::datatable(district_df %>% mutate_if(is.double,round,digits = 3))
+
+district_df %>% ungroup() %>% summarise(mean=weighted.mean(ISP_proposed,proposed_eligibility,na.rm=TRUE))
+
+
+district_df %>% ungroup() %>% summarise(mean=weighted.mean(ISP_current,current_eligibility,na.rm=TRUE))
+
+
+
+```
+
+
+We also consider the possibility that districts are not able to reduce their reimbursement rate at all but wish to increase their coverage. If a district already had schools that had over 62.5% ISP, those schools cannot receive additional reimbursement on a per-meal basis but they can lend some of their excess capacity to another school.  We perform a narrow search in this space to identify if any schools could lend this capacity while providing no decreases in meal reimbursement rates. We find that nearly 200,000 students could receive universal meal service without adversely affecting reimbursement rates. This policy stems from both encouraging utilization of excess slack and from encouraging schools that are in non-compliance with SB 138, from adopting a universal meal service provision.
+```{r,echo=FALSE}
+cutpoint_all <- tibble()
+min_eligibility<-.625
+for (i in (0:125)) {
+  cutoff_value <- i / 200
+
+
+  cutpoint_df <-
+    df_clean %>%
+    mutate(isp = replace_na(isp, 0)) %>%
+    group_by(lea_id) %>%
+    mutate(identified_student_num = enrollment * isp) %>%
+    filter(isp > cutoff_value) %>%
+    mutate(
+      total_identified = sum(identified_student_num, na.rm = TRUE),
+      total_enrolled = sum(enrollment, na.rm = TRUE)
+    ) %>%
+    mutate(cutoff = cutoff_value, percent_identified = total_identified / total_enrolled,
+           local_enrolled= enrollment*(percent_identified>=min_eligibility))
+
+  cutpoint_all <- cutpoint_all %>% bind_rows(cutpoint_df)
+}
+
+
+
+cep_max_schools <-
+  cutpoint_all %>%
+  mutate(receive_service = percent_identified >= min_eligibility) %>%
+  group_by(lea_id,school_id) %>%
+  filter(local_enrolled == max(local_enrolled)) %>%
+  arrange(desc(local_enrolled), cutoff) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(cep_current=cep*enrollment,raw_gain=local_enrolled-cep_current)  %>%
+  group_by(lea_id,lea_name) %>% mutate(district_gain=sum(raw_gain))
+
+
+
+cep_max_schools
+
+
+cep_max_schools %>%
+  ungroup() %>%
+  summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) 
+
+cep_max_schools %>%
+  group_by(lea_id,lea_name) %>% 
+    mutate(cep_current=cep*enrollment) %>%
+  summarise(
+    total_enrollment=sum(enrollment,na.rm=TRUE),
+    proposed_eligibility=sum(local_enrolled,na.rm=TRUE),
+    current_eligibility=sum(cep_current,na.rm = TRUE),
+    ISP_proposed=weighted.mean(isp,local_enrolled,na.rm = TRUE),
+    ISP_current=weighted.mean(isp,enrollment*cep,na.rm = TRUE)
+  ) %>%
+  mutate(district_gain=proposed_eligibility-current_eligibility) %>%
+  arrange(desc(district_gain)) -> district_df
+    
+  district_df  %>%  ungroup() %>% filter(district_gain>0) %>% summarise(district_gain=sum(district_gain))
+    
+
+
+
+```
+
+## Discussion
+
+This work suggests that nearly 1.8 million students could receive universal meal service with modest supplementary support. In effect, based  on existing levels of financial support from the federal government, state and local governments should be able to cover an additional 3 students for every additional student it decides to cover. Even if no existing financial supports exists, we have identified nearly 200,000 students that could receive universal meal service at the full federally reimbursed rate. 
+Moreover, these results also suggest that there are likely non-trivial gains that can occur by using more advanced optimization techniques. Currently, all of these analyses used a simple grid search algorithm that works well but are suboptimal. In general
+```{r,echo=FALSE}
+# df_simple %>% group_by(lea_id) %>% mutate(current_isp=weighted.mean(isp,cep*enrollment))%>%
+#   filter((isp>.625)|cep==1|isp>.625) %>% 
+#   ungroup()  %>%
+#     mutate(cep_meals=cep*enrollment) %>%
+#     summarise(enrollment=sum(enrollment,na.rm = TRUE),
+#               cep_meals=sum(cep_meals)) 
+# 
+#   select(isp,current_isp,cep,lea_id) 
+# 
+#   
+#   
+#   df_simple %>% 
+#     filter(cep==0,isp>=.625)# %>% 
+#     summarise(enrollments=sum(enrollment))
+  
+```
+
