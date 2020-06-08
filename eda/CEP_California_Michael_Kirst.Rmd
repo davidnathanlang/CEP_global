@@ -105,12 +105,13 @@ df_simple %>%
   mutate(Eligibility_Type = case_when(isp > .625 ~ "Max Benefits", isp > .4 ~ "Eligible", TRUE ~ "Not Eligible")) %>%
   group_by(nslp_provision_status, Eligibility_Type) %>%
   summarise(enrollment = sum(enrollment), .groups = "drop_last") %>%
-  pivot_wider(id_col = Eligibility_Type, names_from = nslp_provision_status, values_from = enrollment)
+  pivot_wider(id_col = Eligibility_Type, names_from = nslp_provision_status, values_from = enrollment) %>% 
+  knitr::kable()
 ```
 
 Schools tend to participate with increasing probability as the identified student percentage increases. While there an increase in the probability of enrollment, non-parametric tests further suggest that there are sharp discontinuities in participation at the 40% and 62.5% thresholds where the reimbursement policy respectively kick in and level off.
 
-```{r, message=FALSE, results='hide'}
+```{r, message=FALSE, results="hide", include=F}
 p_load(rdrobust)
 
 rd_df <-
@@ -262,7 +263,8 @@ cep_eligible_schools <-
 
 cep_eligible_schools %>%
   ungroup() %>%
-  summarise_at(c("local_enrolled", "enrollment", "cep_current"), sum, na.rm = TRUE)
+  summarise_at(c("local_enrolled", "enrollment", "cep_current"), sum, na.rm = TRUE) %>% 
+  knitr::kable()
 
 cep_eligible_schools %>%
   group_by(lea_id, lea_name) %>%
@@ -280,10 +282,11 @@ cep_eligible_schools %>%
 
 district_df %>%
   ungroup() %>%
-  summarise_at(c("proposed_eligibility", "current_eligibility", "district_gain", "total_enrollment"), sum, na.rm = TRUE)
+  summarise_at(c("proposed_eligibility", "current_eligibility", "district_gain", "total_enrollment"), sum, na.rm = TRUE) %>% 
+  knitr::kable()
 
-district_df %>% ungroup() %>% summarise(mean=weighted.mean(ISP_proposed,proposed_eligibility,na.rm=TRUE))
-district_df %>% ungroup() %>% summarise(mean=weighted.mean(ISP_current,current_eligibility,na.rm=TRUE))
+district_df %>% ungroup() %>% summarise(`Mean Proposed ISP` = weighted.mean(ISP_proposed,proposed_eligibility,na.rm=TRUE)) %>% knitr::kable()
+district_df %>% ungroup() %>% summarise(`Mean Current ISP` = weighted.mean(ISP_current,current_eligibility,na.rm=TRUE)) %>% knitr::kable()
 
 DT::datatable(district_df %>% mutate_if(is.double,round,digits = 3))
 ```
@@ -331,7 +334,7 @@ cep_max_schools <-
 
 cep_max_schools %>%
   ungroup() %>%
-  summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) 
+  summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) %>% knitr::kable()
 
 cep_max_schools %>%
   group_by(lea_id,lea_name) %>% 
@@ -346,7 +349,7 @@ cep_max_schools %>%
   mutate(district_gain=proposed_eligibility-current_eligibility) %>%
   arrange(desc(district_gain)) -> district_df
 
-district_df %>% ungroup() %>% filter(district_gain > 0) %>% summarise(district_gain=sum(district_gain))
+district_df %>% ungroup() %>% filter(district_gain > 0) %>% summarise(district_gain=sum(district_gain)) %>% knitr::kable()
 ```
 
 ## Discussion
