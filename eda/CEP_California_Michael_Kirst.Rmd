@@ -1,5 +1,7 @@
 ---
 title: "California Universal Meal Service Optimization Analysis"
+author: "David Lang (dnlang86@stanford.edu) and Saurabh Khana (saurabhkhana@stanford.edu)"
+institution: "Stanford University"
 output: html_document
 ---
 
@@ -7,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE, message = F, warning = F, echo = F, fig.retina = 4)
 ```
 
-Abstract: This document utilizes data from the  California's Community Eligibility Provision (CEP) (USDA FN 742) and National Student Lunch Provision Status (NLPS) for the 2019-20 academic year to explore whether or not California Schools are  fully utilizing federally subsidized programs for universal meal service. We find that in practice, many school and district are eligible but not currently adopting the program. Optimal partiicipation in these programs would increase universal meal service by in excess of 1.5 million students.  We also find that a small but non-trivial fraction of schools should be obligated as a consequence of SB 138. Approximately 80,000 students would receive universal meal service if they were to comply with the senate bill.
+Abstract: This document utilizes data from the  California's Community Eligibility Provision (CEP) (USDA FN 742) and National Student Lunch Provision Status (NLPS) for the 2019-20 academic year to explore whether or not California Schools are  fully utilizing federally subsidized programs for universal meal service. We find that in practice, many school and district are eligible but not currently adopting the program. Optimal partiicipation in these programs would increase universal meal service by in excess of 1.5 million students.  We also find that a small but non-trivial fraction of schools should be obligated as a consequence of SB 138. Approximately 200,000 students would receive universal meal service if they were to comply with the senate bill.
 
 
 ```{r,echo=FALSE}
@@ -76,9 +78,9 @@ df_clean %>%
 ```
 
 
-For the remainder of this analysis, we limit the analytical sample to a) schools that are currently participating in CEP, and b) schools that are actively not electing to participate in any National School Lunch Program for the 2019-2020 period. Schools are able to participate in CEP if at least 40% of their students are identified as eligible for universal meal service via SNAP, TANF, Calfresh and other programs. Schools that participate in the program must keep a daily total of meal service and not charge students for meals. In exchange, the school will receive a federal subsidy that ranges from to 60% to 100% of the federal reimbursement for free meals.  In effect this also means that there's zero marginal benefit for schools that have in excess of 62.5% eligibility. Schools can also participate if they are below this 40% threshold if they are part of subgroup schools that one average satisfy this threshold.
+For the remainder of this analysis, we limit the analytical sample to a) schools that are currently participating in CEP, and b) schools that are actively not electing to participate in any National School Lunch Program for the 2019-2020 period. Schools are able to participate in CEP if at least 40% of their students are identified as eligible for universal meal service via SNAP, TANF, Calfresh and other programs. Schools that participate in the program must keep a daily total of meal service and not charge students for meals. In exchange, the school will receive a federal subsidy that ranges from to 64% to 100% of the federal reimbursement for free meals.  In effect this also means that there's zero marginal benefit for schools that have in excess of 62.5% eligibility. Schools can also participate if they are below this 40% threshold if they are part of subgroup schools that one average satisfy this threshold.
 
-The figures below illustrates the current distribution of schools based on whether or not they qualify for the program on an individual basis. The vertical lines correspond to the 40% threshold at which schools become eligible to participate in the program on an independent basis and 62.5% where schools receive the maximal federal reimbursement rate. Assuming schools must participate in the program independently, over a half-million students could be participating in the program.
+The figures below illustrates the current distribution of schools based on whether or not they qualify for the program on an individual basis using each school's Identified Student Percentage (ISP). The vertical lines correspond to the 40% threshold at which schools become eligible to participate in the program on an independent basis and 62.5% where schools receive the maximal federal reimbursement rate. Assuming schools must participate in the program independently, over a half-million students could be participating in the program.
 
 
 ```{r,echo=FALSE}
@@ -264,10 +266,10 @@ cep_eligible_schools <-
 
 # cep_eligible_schools
 
-cep_eligible_schools %>%
-  ungroup() %>%
-  summarise_at(c("local_enrolled", "enrollment", "cep_current"), sum, na.rm = TRUE) %>% 
-  knitr::kable()
+# cep_eligible_schools %>%
+#   ungroup() %>%
+#   summarise_at(c("local_enrolled", "enrollment", "cep_current"), sum, na.rm = TRUE) %>% 
+#   knitr::kable()
 
 cep_eligible_schools %>%
   group_by(lea_id, lea_name) %>%
@@ -288,8 +290,8 @@ district_df %>%
   summarise_at(c("proposed_eligibility", "current_eligibility", "district_gain", "total_enrollment"), sum, na.rm = TRUE) %>% 
   knitr::kable()
 
-district_df %>% ungroup() %>% summarise(`Mean Proposed ISP` = weighted.mean(ISP_proposed,proposed_eligibility,na.rm=TRUE)) %>% knitr::kable()
-district_df %>% ungroup() %>% summarise(`Mean Current ISP` = weighted.mean(ISP_current,current_eligibility,na.rm=TRUE)) %>% knitr::kable()
+district_df %>% ungroup() %>% summarise(`Mean Proposed Reimbursement` = weighted.mean(ISP_proposed,proposed_eligibility,na.rm=TRUE)*1.6) %>% knitr::kable()
+district_df %>% ungroup() %>% summarise(`Mean Current Reimbursement` = weighted.mean(ISP_current,current_eligibility,na.rm=TRUE)*1.6) %>% knitr::kable()
 
 DT::datatable(district_df %>% mutate_if(is.double,round,digits = 3))
 ```
@@ -335,9 +337,9 @@ cep_max_schools <-
 
 # cep_max_schools
 
-cep_max_schools %>%
-  ungroup() %>%
-  summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) %>% knitr::kable()
+# cep_max_schools %>%
+#   ungroup() %>%
+#   summarise_at(c("local_enrolled","enrollment","cep_current"), sum, na.rm = TRUE) %>% knitr::kable()
 
 cep_max_schools %>%
   group_by(lea_id,lea_name) %>% 
