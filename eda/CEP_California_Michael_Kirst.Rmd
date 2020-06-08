@@ -80,6 +80,7 @@ For the remainder of this analysis, we limit the analytical sample to a) schools
 
 The figures below illustrates the current distribution of schools based on whether or not they qualify for the program on an individual basis. The vertical lines correspond to the 40% threshold at which schools become eligible to participate in the program on an independent basis and 62.5% where schools receive the maximal federal reimbursement rate. Assuming schools must participate in the program independently, over a half-million students could be participating in the program.
 
+
 ```{r,echo=FALSE}
 df_simple <- 
   df_clean %>% 
@@ -109,7 +110,9 @@ df_simple %>%
   knitr::kable()
 ```
 
+
 Schools tend to participate with increasing probability as the identified student percentage increases. While there an increase in the probability of enrollment, non-parametric tests further suggest that there are sharp discontinuities in participation at the 40% and 62.5% thresholds where the reimbursement policy respectively kick in and level off.
+
 
 ```{r, message=FALSE, results="hide", include=F}
 p_load(rdrobust)
@@ -351,6 +354,7 @@ cep_max_schools %>%
 
 district_df %>% ungroup() %>% filter(district_gain > 0) %>% summarise(district_gain=sum(district_gain)) %>% knitr::kable()
 ```
+
 
 ## Discussion
 
