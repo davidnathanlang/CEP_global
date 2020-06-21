@@ -1,0 +1,12 @@
+name: CEP_Optimizer_Personalized
+title: CEP_Optimizer_Personalized
+username:
+account: davidnathanlang
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2483872
+bundleId: 3297706
+url: https://davidnathanlang.shinyapps.io/CEP_Optimizer_Personalized/
+when: 1592726374.85604
+asMultiple: FALSE
+asStatic: FALSE
