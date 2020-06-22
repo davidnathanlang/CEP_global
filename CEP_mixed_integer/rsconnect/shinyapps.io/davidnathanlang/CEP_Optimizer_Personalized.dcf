@@ -5,8 +5,8 @@ account: davidnathanlang
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 2483872
-bundleId: 3297706
+bundleId: 3299854
 url: https://davidnathanlang.shinyapps.io/CEP_Optimizer_Personalized/
-when: 1592726374.85604
+when: 1592786166.44088
 asMultiple: FALSE
 asStatic: FALSE

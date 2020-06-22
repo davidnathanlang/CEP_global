@@ -6,7 +6,7 @@ library(janitor)
 
 
 set.seed(12345)
-df<-read_csv("LAUSD_raw.csv") %>% select(school_name=school_name.x,enrollment,isp,cep) %>%
+optimal_df<-read_csv("LAUSD_raw.csv") %>% select(school_name=school_name.x,enrollment,isp,cep) %>%
     mutate(objective=floor(enrollment*runif(n = n(),min = 100,max=200)))
 # Define UI for data upload app ----
 ui <- fluidPage(
@@ -86,8 +86,8 @@ ui <- fluidPage(
         mainPanel(
 
             # Output: Data file ----
-            tableOutput("contents"),
-            plotOutput('plot1')
+            tableOutput("contents")
+            #plotOutput('plot1')
 
         )
 
@@ -243,21 +243,21 @@ server <- function(input, output) {
     )
     garbage<-optimal_df
 
-    output$plot1 <- renderPlot({
-        print(optimal_df)
-
-        optimal_df %>% summarise(total_enrollment=sum(enrollment,na.rm = TRUE),
-                                 optimal_coverage=sum(enrollment*optimal_cep),
-                                 individual_coverage=sum(enrollment*(isp>input$isp_cutoff)))
-        as_tibble(cbind(category = names(plot_data), t(plot_data))) %>%
-            transmute(category,students=as.numeric(V2))  %>%
-            ggplot(aes(category,students))+
-            geom_col()+
-            scale_y_continuous(label=scales::label_number())+
-            labs(
-                title= str_c("Optimal CEP under  ",input$Policy, " Policy", "under",input$isp_cutoff)
-            )
-    })
+    # output$plot1 <- renderPlot({
+    #     print(optimal_df)
+    #
+    #     df %>% summarise(total_enrollment=sum(enrollment,na.rm = TRUE),
+    #                              optimal_coverage=sum(enrollment*optimal_cep),
+    #                              individual_coverage=sum(enrollment*(isp>input$isp_cutoff)))
+    #     as_tibble(cbind(category = names(plot_data), t(plot_data))) %>%
+    #         transmute(category,students=as.numeric(V2))  %>%
+    #         ggplot(aes(category,students))+
+    #         geom_col()+
+    #         scale_y_continuous(label=scales::label_number())+
+    #         labs(
+    #             title= str_c("Optimal CEP under  ",input$Policy, " Policy", "under",input$isp_cutoff)
+    #         )
+    # })
 
 }
 # Run the app ----
